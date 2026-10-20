@@ -1,0 +1,102 @@
+package com.xiaoyan.aiassistant.chat;
+
+import com.xiaoyan.aiassistant.memory.ChatTurn;
+import com.xiaoyan.aiassistant.memory.ConversationMemory;
+import com.xiaoyan.aiassistant.retrieval.RetrievalCandidate;
+import org.springframework.stereotype.Component;
+
+import java.util.List;
+
+// 负责把记忆、检索片段和用户问题组装成最终 Prompt。
+@Component
+public class PromptBuilder {
+
+    // 构建最终回答 Prompt，把记忆、长期偏好和知识库片段放到同一上下文中。
+    public String build(String originalMessage,
+                        QueryRewriteResult rewriteResult,
+                        ConversationMemory memory,
+                        List<RetrievalCandidate> longMemories,
+                        List<RetrievalCandidate> knowledge,
+                        ConfidenceReport confidence) {
+        StringBuilder prompt = new StringBuilder();
+        prompt.append("""
+                你是“智能效研AI研发助手”，服务于团队研发提效场景。
+                请严格围绕团队项目资料、研发文档、开发规范、新人培训和常见问题回答。
+                优先依据给定知识回答；如果资料不足，请明确说明知识库中没有足够依据，不要编造。
+                回答要清晰、可执行、简洁，适合团队同学直接参考。
+                """);
+        appendConfidenceGuard(prompt, confidence);
+        appendMemory(prompt, memory);
+        appendCandidates(prompt, "长期记忆", longMemories, false);
+        appendCandidates(prompt, "知识库检索片段", knowledge, true);
+        appendCitationGuide(prompt);
+        prompt.append("原始问题：").append(originalMessage).append("\n");
+        prompt.append("检索改写：").append(rewriteResult.rewrittenQuery()).append("\n");
+        if (!rewriteResult.subQueries().isEmpty()) {
+            prompt.append("多意图拆分：").append(String.join("；", rewriteResult.subQueries())).append("\n");
+        }
+        if (!rewriteResult.expandedKeywords().isEmpty()) {
+            prompt.append("关键词扩展：").append(String.join("，", rewriteResult.expandedKeywords())).append("\n");
+        }
+        prompt.append("请直接给出最终回答。");
+        return prompt.toString();
+    }
+
+    // 中低置信时追加反幻觉强约束，仍生成回答但要求声明未覆盖。
+    private void appendConfidenceGuard(StringBuilder prompt, ConfidenceReport confidence) {
+        if (confidence == null || confidence.isHigh()) {
+            return;
+        }
+        prompt.append("""
+                当前检索依据不足（置信度偏低）。回答时必须严格遵守：
+                1. 如果给定资料没有覆盖问题，明确回复“知识库中暂无相关资料”，可以给出通用建议但要注明是通用经验。
+                2. 不得编造资料中不存在的具体数字、版本号、接口名和配置项。
+                3. 每个结论都应能在给定片段中找到依据，无法支撑的内容不要写。
+                """);
+    }
+
+    // 短期记忆用于补全追问中的指代关系。
+    private void appendMemory(StringBuilder prompt, ConversationMemory memory) {
+        prompt.append("\n会话摘要：").append(memory.summary().isBlank() ? "无" : memory.summary()).append("\n");
+        prompt.append("最近对话：\n");
+        if (memory.recentTurns().isEmpty()) {
+            prompt.append("无\n");
+            return;
+        }
+        for (ChatTurn turn : memory.recentTurns()) {
+            prompt.append(turn.role()).append(": ").append(turn.content()).append("\n");
+        }
+    }
+
+    // 检索片段按排序结果写入，避免模型忽略靠前的高相关内容；仅知识库片段使用 [n] 编号供引用溯源。
+    private void appendCandidates(StringBuilder prompt, String title, List<RetrievalCandidate> candidates, boolean citeable) {
+        prompt.append("\n").append(title).append("：\n");
+        if (candidates == null || candidates.isEmpty()) {
+            prompt.append("无\n");
+            return;
+        }
+        for (int i = 0; i < candidates.size(); i++) {
+            RetrievalCandidate candidate = candidates.get(i);
+            if (citeable) {
+                prompt.append("[").append(i + 1).append("] ");
+            } else {
+                prompt.append("（记忆").append(i + 1).append("） ");
+            }
+            if (candidate.getTitle() != null && !candidate.getTitle().isBlank()) {
+                prompt.append(candidate.getTitle()).append(" - ");
+            }
+            if (candidate.getSource() != null && !candidate.getSource().isBlank()) {
+                prompt.append(candidate.getSource()).append("\n");
+            }
+            prompt.append(candidate.getContent()).append("\n");
+        }
+    }
+
+    // 引用溯源约束：答案中标注知识库片段编号，方便前端展示来源卡片。
+    private void appendCitationGuide(StringBuilder prompt) {
+        prompt.append("""
+                引用知识库检索片段中的内容时，请在对应句子末尾标注来源编号，如 [1]、[2][3]。
+                只标注知识库片段的编号，长期记忆不要标注；没有依据的内容不要标注编号。
+                """);
+    }
+}

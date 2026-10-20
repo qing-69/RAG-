@@ -1,0 +1,1367 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>智能效研AI研发助手</title>
+    <script src="https://cdn.jsdelivr.net/npm/vue@3.4.27/dist/vue.global.prod.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/marked@12.0.2/marked.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/dompurify@3.1.6/dist/purify.min.js"></script>
+    <style>
+        /* 全局颜色变量，方便统一调整界面风格。 */
+        :root {
+            --bg: #f4f6fb;
+            --surface: #ffffff;
+            --surface-soft: #f8fafc;
+            --line: #dde4ef;
+            --line-strong: #c7d2e3;
+            --text: #162033;
+            --muted: #66748a;
+            --primary: #1f57d6;
+            --primary-dark: #1743a6;
+            --green: #0f8a6a;
+            --amber: #a15c08;
+            --red: #c93434;
+            --shadow: 0 18px 45px rgba(22, 32, 51, .08);
+        }
+
+        /* 统一盒模型，避免布局宽度计算偏差。 */
+        * { box-sizing: border-box; }
+
+        body {
+            margin: 0;
+            min-width: 320px;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif;
+            background: var(--bg);
+            color: var(--text);
+        }
+
+        button, input, textarea { font: inherit; }
+
+        button {
+            min-height: 38px;
+            border: 0;
+            border-radius: 6px;
+            padding: 0 14px;
+            background: var(--primary);
+            color: #fff;
+            cursor: pointer;
+            font-weight: 700;
+            transition: background .16s ease, transform .16s ease, box-shadow .16s ease;
+        }
+
+        button:hover:not(:disabled) {
+            background: var(--primary-dark);
+            box-shadow: 0 8px 18px rgba(31, 87, 214, .18);
+            transform: translateY(-1px);
+        }
+
+        button.secondary {
+            background: #eef3fb;
+            color: #24324a;
+        }
+
+        button.secondary:hover:not(:disabled) {
+            background: #e1e9f7;
+            box-shadow: none;
+        }
+
+        button.danger {
+            background: #fff1f1;
+            color: var(--red);
+        }
+
+        button.danger:hover:not(:disabled) {
+            background: #ffe0e0;
+            box-shadow: none;
+        }
+
+        button:disabled {
+            opacity: .55;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+
+        input, textarea {
+            width: 100%;
+            border: 1px solid var(--line-strong);
+            border-radius: 6px;
+            padding: 10px 11px;
+            background: #fff;
+            color: var(--text);
+            outline: none;
+            transition: border-color .16s ease, box-shadow .16s ease;
+        }
+
+        input:focus, textarea:focus {
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px rgba(31, 87, 214, .12);
+        }
+
+        textarea {
+            min-height: 88px;
+            resize: vertical;
+            line-height: 1.6;
+        }
+
+        /* 页面主布局：左侧知识管理，右侧问答工作区。 */
+        .app-shell {
+            min-height: 100vh;
+            display: grid;
+            grid-template-columns: 360px minmax(0, 1fr);
+        }
+
+        /* 左侧面板承载上传、记忆和文档列表。 */
+        .sidebar {
+            height: 100vh;
+            overflow-y: auto;
+            border-right: 1px solid var(--line);
+            background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
+            padding: 22px;
+        }
+
+        .brand {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 20px;
+        }
+
+        .brand-mark {
+            width: 42px;
+            height: 42px;
+            flex: 0 0 42px;
+            display: grid;
+            place-items: center;
+            border-radius: 8px;
+            background: #173f9f;
+            color: #fff;
+            font-weight: 800;
+            letter-spacing: 0;
+        }
+
+        .brand-title {
+            margin: 0;
+            font-size: 19px;
+            line-height: 1.25;
+        }
+
+        .brand-subtitle {
+            margin-top: 4px;
+            color: var(--muted);
+            font-size: 12px;
+            line-height: 1.45;
+        }
+
+        .metric-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            margin-bottom: 18px;
+        }
+
+        .metric {
+            min-height: 74px;
+            padding: 12px;
+            border: 1px solid var(--line);
+            border-radius: 8px;
+            background: var(--surface);
+        }
+
+        .metric-value {
+            font-size: 24px;
+            font-weight: 800;
+            line-height: 1;
+        }
+
+        .metric-label {
+            margin-top: 8px;
+            color: var(--muted);
+            font-size: 12px;
+        }
+
+        .section {
+            margin-top: 18px;
+        }
+
+        .section-head {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            margin-bottom: 9px;
+        }
+
+        /* 回答正文 Markdown 渲染后的排版。 */
+        .bubble.md {
+            white-space: normal;
+            word-break: break-word;
+        }
+        .bubble.md p { margin: 0 0 8px; }
+        .bubble.md p:last-child { margin-bottom: 0; }
+        .bubble.md ul, .bubble.md ol { margin: 4px 0 8px; padding-left: 20px; }
+        .bubble.md code {
+            background: #eef2f9;
+            border-radius: 4px;
+            padding: 1px 5px;
+            font-size: 12px;
+        }
+        .bubble.md pre {
+            background: #1e293b;
+            color: #e2e8f0;
+            border-radius: 8px;
+            padding: 10px 12px;
+            overflow-x: auto;
+        }
+        .bubble.md pre code { background: none; color: inherit; padding: 0; }
+        .bubble.md h1, .bubble.md h2, .bubble.md h3 {
+            font-size: 15px;
+            margin: 10px 0 6px;
+        }
+        .bubble.md table { border-collapse: collapse; margin: 6px 0; }
+        .bubble.md th, .bubble.md td {
+            border: 1px solid var(--line);
+            padding: 4px 8px;
+            font-size: 12px;
+        }
+
+        /* 引用来源卡片。 */
+        .source-list {
+            margin-top: 8px;
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+        .source-card {
+            background: var(--surface-soft);
+            border: 1px solid var(--line);
+            border-radius: 8px;
+            padding: 8px 10px;
+            font-size: 12px;
+        }
+        .source-head {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+            margin-bottom: 4px;
+        }
+        .source-index {
+            background: var(--primary);
+            color: #fff;
+            border-radius: 4px;
+            padding: 0 6px;
+            font-size: 11px;
+            line-height: 18px;
+            flex-shrink: 0;
+        }
+        .source-title { font-weight: 600; color: var(--text); }
+        .source-snippet { color: var(--muted); line-height: 1.5; }
+
+        /* 消息反馈按钮。 */
+        .feedback-row {
+            display: flex;
+            gap: 6px;
+            margin-top: 6px;
+            align-items: center;
+        }
+        .feedback-btn {
+            border: 1px solid var(--line);
+            background: var(--surface);
+            border-radius: 6px;
+            padding: 2px 10px;
+            font-size: 12px;
+            cursor: pointer;
+            color: var(--muted);
+        }
+        .feedback-btn:hover { border-color: var(--primary); color: var(--primary); }
+        .feedback-btn.active-good { border-color: var(--green); color: var(--green); background: #e7f6f1; }
+        .feedback-btn.active-bad { border-color: var(--red); color: var(--red); background: #fdecec; }
+        .feedback-done { color: var(--muted); font-size: 12px; }
+
+        /* 历史会话列表。 */
+        .session-list {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            max-height: 220px;
+            overflow-y: auto;
+        }
+        .session-item {
+            border: 1px solid var(--line);
+            border-radius: 8px;
+            padding: 8px 10px;
+            cursor: pointer;
+            background: var(--surface);
+        }
+        .session-item:hover { border-color: var(--primary); }
+        .session-item.active { border-color: var(--primary); background: #eef3ff; }
+        .session-title {
+            font-size: 13px;
+            color: var(--text);
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .session-time { font-size: 11px; color: var(--muted); margin-top: 2px; }
+
+        .section-title {
+            margin: 0;
+            font-size: 14px;
+            font-weight: 800;
+        }
+
+        .panel {
+            border: 1px solid var(--line);
+            border-radius: 8px;
+            padding: 13px;
+            background: var(--surface);
+            box-shadow: 0 8px 24px rgba(22, 32, 51, .04);
+        }
+
+        .stack {
+            display: grid;
+            gap: 9px;
+        }
+
+        .row {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+        }
+
+        .row > button {
+            flex: 0 0 auto;
+        }
+
+        .hint, .status {
+            color: var(--muted);
+            font-size: 12px;
+            line-height: 1.5;
+        }
+
+        .status {
+            min-height: 18px;
+        }
+
+        .file-input {
+            display: none;
+        }
+
+        .file-picker {
+            min-height: 84px;
+            display: grid;
+            align-content: center;
+            gap: 7px;
+            border: 1px dashed var(--line-strong);
+            border-radius: 8px;
+            padding: 14px;
+            background: var(--surface-soft);
+            cursor: pointer;
+        }
+
+        .file-picker strong {
+            font-size: 13px;
+        }
+
+        .file-picker span {
+            color: var(--muted);
+            font-size: 12px;
+            word-break: break-all;
+        }
+
+        .doc-list {
+            display: grid;
+            gap: 9px;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+
+        .doc-card {
+            display: grid;
+            gap: 8px;
+            padding: 11px;
+            border: 1px solid var(--line);
+            border-radius: 8px;
+            background: var(--surface-soft);
+        }
+
+        .doc-main {
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            gap: 10px;
+        }
+
+        .doc-name {
+            font-size: 13px;
+            font-weight: 800;
+            line-height: 1.45;
+            word-break: break-all;
+        }
+
+        .tag-row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+        }
+
+        .tag {
+            display: inline-flex;
+            align-items: center;
+            min-height: 22px;
+            border-radius: 5px;
+            padding: 0 8px;
+            background: #eef3fb;
+            color: #44556d;
+            font-size: 12px;
+            font-weight: 650;
+        }
+
+        .tag.ready {
+            background: #e8f6f1;
+            color: var(--green);
+        }
+
+        .tag.warn {
+            background: #fff5e7;
+            color: var(--amber);
+        }
+
+        .tag.bad {
+            background: #fff1f1;
+            color: var(--red);
+        }
+
+        .bubble-col {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            min-width: 0;
+        }
+
+        .confidence-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+
+        .confidence-reason {
+            color: var(--muted);
+            font-size: 12px;
+        }
+
+        /* workspace 顶部在问答与缺口分析之间切换。 */
+        button.workspace-tab {
+            min-height: 30px;
+            padding: 0 12px;
+            border: 0;
+            border-radius: 6px;
+            background: transparent;
+            color: var(--muted);
+            font-size: 12px;
+            font-weight: 700;
+            box-shadow: none;
+        }
+
+        button.workspace-tab:hover {
+            background: #e1e9f7;
+            color: var(--text);
+            box-shadow: none;
+            transform: none;
+        }
+
+        button.workspace-tab.active {
+            background: var(--surface);
+            color: var(--primary);
+            box-shadow: 0 2px 8px rgba(22, 32, 51, .08);
+        }
+
+        .workspace-tabs {
+            display: inline-flex;
+            gap: 4px;
+            padding: 4px;
+            border: 1px solid var(--line);
+            border-radius: 8px;
+            background: var(--surface-soft);
+        }
+
+        .gap-wrap {
+            flex: 1;
+            min-height: 0;
+            overflow-y: auto;
+            padding: 22px 26px;
+            display: flex;
+            flex-direction: column;
+            gap: 14px;
+        }
+
+        .gap-metrics {
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+        }
+
+        .gap-list {
+            display: grid;
+            gap: 10px;
+        }
+
+        .gap-card {
+            gap: 10px;
+        }
+
+        .sample-line {
+            line-height: 1.6;
+        }
+
+        .empty-state {
+            min-height: 92px;
+            display: grid;
+            place-items: center;
+            border: 1px dashed var(--line-strong);
+            border-radius: 8px;
+            color: var(--muted);
+            font-size: 13px;
+            text-align: center;
+            background: var(--surface-soft);
+        }
+
+        /* 右侧区域承载聊天主流程。 */
+        .workspace {
+            min-width: 0;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .topbar {
+            height: 70px;
+            flex: 0 0 70px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 16px;
+            border-bottom: 1px solid var(--line);
+            background: rgba(255, 255, 255, .92);
+            padding: 0 26px;
+        }
+
+        .page-title {
+            margin: 0;
+            font-size: 20px;
+            line-height: 1.2;
+        }
+
+        .page-subtitle {
+            margin-top: 5px;
+            color: var(--muted);
+            font-size: 12px;
+        }
+
+        .session-chip {
+            max-width: 260px;
+            min-height: 32px;
+            display: inline-flex;
+            align-items: center;
+            border: 1px solid var(--line);
+            border-radius: 6px;
+            padding: 0 10px;
+            background: var(--surface-soft);
+            color: var(--muted);
+            font-size: 12px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .chat-wrap {
+            flex: 1;
+            min-height: 0;
+            display: flex;
+            flex-direction: column;
+            padding: 22px 26px;
+        }
+
+        /* 聊天面板使用固定边界，突出主要交互区域。 */
+        .chat-panel {
+            flex: 1;
+            min-height: 0;
+            display: flex;
+            flex-direction: column;
+            border: 1px solid var(--line);
+            border-radius: 8px;
+            background: var(--surface);
+            box-shadow: var(--shadow);
+            overflow: hidden;
+        }
+
+        .chat {
+            flex: 1;
+            overflow-y: auto;
+            padding: 24px;
+            background:
+                linear-gradient(180deg, rgba(248, 250, 252, .88), rgba(255, 255, 255, .96)),
+                repeating-linear-gradient(0deg, transparent, transparent 29px, rgba(221, 228, 239, .32) 30px);
+        }
+
+        .message {
+            max-width: 940px;
+            margin: 0 auto 18px;
+            display: flex;
+            gap: 10px;
+        }
+
+        .message.user {
+            justify-content: flex-end;
+        }
+
+        .avatar {
+            width: 32px;
+            height: 32px;
+            flex: 0 0 32px;
+            display: grid;
+            place-items: center;
+            border-radius: 8px;
+            background: #e8edf7;
+            color: #31435d;
+            font-size: 12px;
+            font-weight: 800;
+        }
+
+        .message.user .avatar {
+            order: 2;
+            background: #dfe8ff;
+            color: var(--primary);
+        }
+
+        .bubble {
+            max-width: min(760px, 76vw);
+            border-radius: 8px;
+            padding: 13px 15px;
+            line-height: 1.72;
+            white-space: pre-wrap;
+            word-break: break-word;
+            font-size: 14px;
+        }
+
+        .assistant .bubble {
+            border: 1px solid var(--line);
+            background: #fff;
+        }
+
+        .user .bubble {
+            background: var(--primary);
+            color: #fff;
+        }
+
+        .composer-shell {
+            border-top: 1px solid var(--line);
+            padding: 15px;
+            background: #fff;
+        }
+
+        .composer {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) auto auto;
+            gap: 10px;
+            align-items: end;
+        }
+
+        .composer textarea {
+            min-height: 54px;
+            max-height: 180px;
+            resize: vertical;
+        }
+
+        .chat-status {
+            min-height: 20px;
+            margin-top: 8px;
+            color: var(--muted);
+            font-size: 12px;
+        }
+
+        /* 中等屏幕下改为上下布局。 */
+        @media (max-width: 980px) {
+            .app-shell {
+                grid-template-columns: 1fr;
+            }
+
+            .sidebar {
+                height: auto;
+                max-height: none;
+                border-right: 0;
+                border-bottom: 1px solid var(--line);
+            }
+
+            .workspace {
+                min-height: 70vh;
+            }
+        }
+
+        /* 小屏幕下进一步压缩间距和按钮布局。 */
+        @media (max-width: 680px) {
+            .sidebar, .chat-wrap {
+                padding: 16px;
+            }
+
+            .topbar {
+                height: auto;
+                min-height: 72px;
+                align-items: flex-start;
+                flex-direction: column;
+                padding: 16px;
+            }
+
+            .metric-grid, .composer, .gap-metrics {
+                grid-template-columns: 1fr;
+            }
+
+            .bubble {
+                max-width: calc(100vw - 92px);
+            }
+
+            .session-chip {
+                max-width: 100%;
+            }
+        }
+    </style>
+</head>
+<body>
+<div id="app" class="app-shell">
+    <aside class="sidebar">
+        <div class="brand">
+            <div class="brand-mark">效研</div>
+            <div>
+                <h1 class="brand-title">智能效研AI研发助手</h1>
+                <div class="brand-subtitle">团队知识库、研发规范与新人培训问答入口</div>
+            </div>
+        </div>
+
+        <div class="metric-grid">
+            <div class="metric">
+                <div class="metric-value">{{ documents.length }}</div>
+                <div class="metric-label">已入库文档</div>
+            </div>
+            <div class="metric">
+                <div class="metric-value">{{ totalChunks }}</div>
+                <div class="metric-label">知识片段</div>
+            </div>
+        </div>
+
+        <section class="section">
+            <div class="section-head">
+                <h2 class="section-title">历史会话</h2>
+                <button class="secondary" @click="loadSessions">刷新</button>
+            </div>
+            <div class="session-list">
+                <div v-if="sessions.length === 0" class="empty-state">暂无历史会话，提问后自动保存。</div>
+                <div v-for="item in sessions" :key="item.sessionId"
+                     :class="['session-item', { active: item.sessionId === sessionId }]"
+                     @click="openSession(item.sessionId)">
+                    <div class="session-title">{{ item.title }}</div>
+                    <div class="session-time">{{ formatTime(item.updatedAt) }}</div>
+                </div>
+            </div>
+        </section>
+
+        <section class="section">
+            <div class="section-head">
+                <h2 class="section-title">当前用户</h2>
+                <span class="tag">userId</span>
+            </div>
+            <div class="panel stack">
+                <input v-model="userId" @change="saveUserId" placeholder="例如：zhangsan">
+                <div class="hint">长期记忆按用户 ID 隔离；不填写时使用 default。</div>
+            </div>
+        </section>
+
+        <section class="section">
+            <div class="section-head">
+                <h2 class="section-title">文档上传</h2>
+                <span class="tag warn">Tika 解析</span>
+            </div>
+            <div class="panel stack">
+                <label class="file-picker" for="document-file">
+                    <strong>{{ selectedFileName || '选择或拖入团队文档' }}</strong>
+                    <span>支持 PDF、Word、Markdown、TXT、PPT、Excel</span>
+                </label>
+                <input id="document-file" class="file-input" type="file" ref="fileInput"
+                       accept=".pdf,.doc,.docx,.md,.txt,.ppt,.pptx,.xls,.xlsx"
+                       @change="onFileChange">
+                <div class="row">
+                    <button @click="uploadDocument" :disabled="uploading">{{ uploading ? '入库中' : '上传入库' }}</button>
+                    <button class="secondary" @click="loadDocuments">刷新</button>
+                </div>
+                <div class="status">{{ uploadStatus }}</div>
+            </div>
+        </section>
+
+        <section class="section">
+            <div class="section-head">
+                <h2 class="section-title">长期记忆</h2>
+                <span class="tag ready">主动录入</span>
+            </div>
+            <div class="panel stack">
+                <input v-model="memoryTitle" placeholder="标题">
+                <textarea v-model="memoryContent" placeholder="需要助手长期记住的个人偏好、固定背景或团队事实"></textarea>
+                <input v-model="memoryTags" placeholder="标签，可选">
+                <button @click="addMemory" :disabled="!memoryContent.trim()">保存记忆</button>
+                <div class="status">{{ memoryStatus }}</div>
+            </div>
+        </section>
+
+        <section class="section">
+            <div class="section-head">
+                <h2 class="section-title">文档列表</h2>
+                <button class="secondary" @click="loadDocuments">刷新</button>
+            </div>
+            <div class="doc-list">
+                <div v-if="documents.length === 0" class="empty-state">暂无文档，上传后会在这里显示。</div>
+                <div v-for="doc in documents" :key="doc.id" class="doc-card">
+                    <div class="doc-main">
+                        <div class="doc-name">{{ doc.fileName }}</div>
+                        <button class="danger" @click="deleteDocument(doc.id)">删除</button>
+                    </div>
+                    <div class="tag-row">
+                        <span :class="['tag', doc.status === 'READY' ? 'ready' : (doc.status === 'FAILED' ? 'bad' : 'warn')]">{{ doc.status }}</span>
+                        <span class="tag">{{ doc.chunkCount }} chunks</span>
+                        <span class="tag">{{ formatSize(doc.fileSize) }}</span>
+                    </div>
+                    <div v-if="doc.errorMessage" class="hint">{{ doc.errorMessage }}</div>
+                </div>
+            </div>
+        </section>
+    </aside>
+
+    <main class="workspace">
+        <header class="topbar">
+            <div>
+                <h1 class="page-title">{{ activeWorkspace === 'chat' ? '研发知识问答' : '知识缺口分析' }}</h1>
+                <div class="page-subtitle">{{ activeWorkspace === 'chat' ? '结合短期记忆、长期记忆与团队知识库生成回答' : '聚合中低置信提问，定位知识库覆盖盲区' }}</div>
+            </div>
+            <div class="row">
+                <div class="workspace-tabs">
+                    <button class="workspace-tab" :class="{ active: activeWorkspace === 'chat' }"
+                            @click="activeWorkspace = 'chat'">知识问答</button>
+                    <button class="workspace-tab" :class="{ active: activeWorkspace === 'gap' }"
+                            @click="switchWorkspace('gap')">知识缺口</button>
+                </div>
+                <template v-if="activeWorkspace === 'chat'">
+                    <span class="session-chip">session: {{ sessionId }}</span>
+                    <button class="secondary" @click="newSession">新会话</button>
+                </template>
+            </div>
+        </header>
+
+        <section v-if="activeWorkspace === 'chat'" class="chat-wrap">
+            <div class="chat-panel">
+                <div class="chat" ref="chatBox">
+                    <div v-for="(msg, index) in messages" :key="index" :class="['message', msg.role]">
+                        <div class="avatar">{{ msg.role === 'user' ? '我' : 'AI' }}</div>
+                        <div class="bubble-col">
+                            <div v-if="msg.meta" class="confidence-row">
+                                <span :class="['tag', confidenceClass(msg.meta.level)]" :title="msg.meta.reason">
+                                    置信度 {{ confidenceLabel(msg.meta.level) }}
+                                </span>
+                                <span class="confidence-reason">{{ msg.meta.reason }}</span>
+                            </div>
+                            <div v-if="msg.role === 'user'" class="bubble">{{ msg.content }}</div>
+                            <div v-else class="bubble md" v-html="renderMarkdown(msg.content)"></div>
+                            <div v-if="msg.sources && msg.sources.length" class="source-list">
+                                <div v-for="src in msg.sources" :key="src.index" class="source-card">
+                                    <div class="source-head">
+                                        <span class="source-index">[{{ src.index }}]</span>
+                                        <span class="source-title">{{ src.source || src.title || '知识片段' }}</span>
+                                        <span class="tag" :title="src.scoreType === 'keyword' ? '仅关键词命中，无向量相似度' : '向量相似度'">{{ formatScore(src.score) }}{{ src.scoreType === 'keyword' ? ' 关键词' : '' }}</span>
+                                    </div>
+                                    <div class="source-snippet">{{ src.snippet }}</div>
+                                </div>
+                            </div>
+                            <div v-if="msg.role === 'assistant' && msg.content && msg.persisted" class="feedback-row">
+                                <button :class="['feedback-btn', { 'active-good': msg.feedback === 'GOOD' }]"
+                                        @click="submitFeedback(msg, 'GOOD')">👍 有帮助</button>
+                                <button :class="['feedback-btn', { 'active-bad': msg.feedback === 'BAD' }]"
+                                        @click="submitFeedback(msg, 'BAD')">👎 不准确</button>
+                                <span v-if="msg.feedbackSent" class="feedback-done">感谢反馈</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="composer-shell">
+                    <div class="composer">
+                        <textarea v-model="input" @keydown.enter.exact.prevent="send"
+                                  placeholder="询问项目文档、开发规范、部署流程、新人培训问题..."></textarea>
+                        <button @click="send" :disabled="loading || !input.trim()">发送</button>
+                        <button class="secondary" @click="stop" :disabled="!loading">停止</button>
+                    </div>
+                    <div class="chat-status">{{ chatStatus }}</div>
+                </div>
+            </div>
+        </section>
+
+        <section v-else class="gap-wrap">
+            <div class="metric-grid gap-metrics">
+                <div class="metric">
+                    <div class="metric-value">{{ gapSummary.totalQuestions }}</div>
+                    <div class="metric-label">时间窗内提问</div>
+                </div>
+                <div class="metric">
+                    <div class="metric-value">{{ lowConfidenceRatioText }}</div>
+                    <div class="metric-label">低置信占比（{{ gapSummary.lowConfidenceCount }} 条）</div>
+                </div>
+                <div class="metric">
+                    <div class="metric-value">{{ gapClusters.length }}</div>
+                    <div class="metric-label">缺口主题</div>
+                </div>
+            </div>
+
+            <div class="section-head">
+                <h2 class="section-title">缺口主题（中低置信问题聚类）</h2>
+                <button class="secondary" @click="loadGapData">刷新</button>
+            </div>
+
+            <div class="status">{{ gapStatus }}</div>
+
+            <div class="gap-list">
+                <div v-if="gapClusters.length === 0" class="empty-state">
+                    暂无缺口主题。当出现中低置信提问后会在这里聚类展示。
+                </div>
+                <div v-for="(cluster, index) in gapClusters" :key="index" class="doc-card gap-card">
+                    <div class="doc-main">
+                        <div class="doc-name">{{ cluster.representativeQuestion }}</div>
+                        <span class="tag warn">{{ cluster.questionCount }} 次提问</span>
+                    </div>
+                    <div class="tag-row">
+                        <span v-for="keyword in cluster.keywords" :key="keyword" class="tag">{{ keyword }}</span>
+                        <span class="tag">均分 {{ formatScore(cluster.averageTopVectorScore) }}</span>
+                    </div>
+                    <div>
+                        <div v-for="question in cluster.sampleQuestions" :key="question" class="hint sample-line">
+                            · {{ question }}
+                        </div>
+                    </div>
+                    <div class="hint">最近提问：{{ formatTime(cluster.lastAskedAt) }}</div>
+                </div>
+            </div>
+        </section>
+    </main>
+</div>
+
+<script>
+const { createApp, ref, computed, nextTick, onMounted } = Vue;
+
+createApp({
+    setup() {
+        const sessionId = ref(String(Date.now()));
+        const userId = ref(localStorage.getItem('xiaoyanUserId') || 'default');
+        const messages = ref([{ role: 'assistant', content: '你好，我是智能效研AI研发助手。你可以上传团队文档，也可以直接询问项目资料、研发规范和新人培训问题。' }]);
+        const input = ref('');
+        const loading = ref(false);
+        const uploading = ref(false);
+        const chatStatus = ref('');
+        const uploadStatus = ref('');
+        const memoryStatus = ref('');
+        const documents = ref([]);
+        const memoryTitle = ref('');
+        const memoryContent = ref('');
+        const memoryTags = ref('');
+        const selectedFileName = ref('');
+        const fileInput = ref(null);
+        const chatBox = ref(null);
+        const activeWorkspace = ref('chat');
+        const gapSummary = ref({ totalQuestions: 0, lowConfidenceCount: 0, lowConfidenceRatio: 0 });
+        const gapClusters = ref([]);
+        const gapStatus = ref('');
+        const sessions = ref([]);
+        let controller = null;
+
+        // 统计已入库文档的 chunk 总数。
+        const totalChunks = computed(() => documents.value.reduce((sum, doc) => sum + (doc.chunkCount || 0), 0));
+
+        // 低置信占比格式化为百分比。
+        const lowConfidenceRatioText = computed(() => {
+            const ratio = gapSummary.value.lowConfidenceRatio || 0;
+            return `${(ratio * 100).toFixed(1)}%`;
+        });
+
+        // 空用户统一归入 default。
+        const currentUserId = () => userId.value.trim() || 'default';
+
+        // 保存当前用户 ID，刷新页面后仍能使用。
+        const saveUserId = () => {
+            userId.value = currentUserId();
+            localStorage.setItem('xiaoyanUserId', userId.value);
+        };
+
+        // 新消息出现后滚动到底部。
+        const scrollBottom = () => nextTick(() => {
+            if (chatBox.value) chatBox.value.scrollTop = chatBox.value.scrollHeight;
+        });
+
+        // 将字节数格式化为易读的文件大小。
+        const formatSize = (size) => {
+            if (!size && size !== 0) return '未知大小';
+            if (size < 1024) return `${size} B`;
+            if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`;
+            return `${(size / 1024 / 1024).toFixed(1)} MB`;
+        };
+
+        // 选择文件后同步展示文件名。
+        const onFileChange = () => {
+            selectedFileName.value = fileInput.value?.files?.[0]?.name || '';
+        };
+
+        // 创建新的前端会话 ID。
+        const newSession = () => {
+            sessionId.value = String(Date.now());
+            messages.value = [{ role: 'assistant', content: '已开启新会话。' }];
+            chatStatus.value = '';
+            scrollBottom();
+        };
+
+        // 定位 JSON 值的结束位置（字符串感知的括号配对），返回闭合下标或 -1。
+        const findJsonEnd = (text, open, close) => {
+            let depth = 0;
+            let inStr = false;
+            let esc = false;
+            for (let i = 0; i < text.length; i++) {
+                const ch = text[i];
+                if (esc) { esc = false; continue; }
+                if (ch === '\\') { esc = true; continue; }
+                if (ch === '"') { inStr = !inStr; continue; }
+                if (inStr) continue;
+                if (ch === open) depth++;
+                else if (ch === close) {
+                    depth--;
+                    if (depth === 0) return i;
+                }
+            }
+            return -1;
+        };
+
+        // 消费 pending 开头的哨兵帧；返回 undefined=非哨兵，null=数据未收全，其余为剩余文本。
+        const consumeSentinel = (pending, assistant) => {
+            if (pending.startsWith('@meta@')) {
+                const body = pending.slice(6);
+                const end = findJsonEnd(body, '{', '}');
+                if (end === -1) return null;
+                try {
+                    assistant.meta = JSON.parse(body.slice(0, end + 1));
+                } catch (error) {
+                    assistant.meta = { level: 'MEDIUM', reason: '置信度解析失败' };
+                }
+                return body.slice(end + 1);
+            }
+            if (pending.startsWith('@sources@')) {
+                const body = pending.slice(9);
+                const end = findJsonEnd(body, '[', ']');
+                if (end === -1) return null;
+                try {
+                    assistant.sources = JSON.parse(body.slice(0, end + 1));
+                } catch (error) {
+                    assistant.sources = [];
+                }
+                return body.slice(end + 1);
+            }
+            return undefined;
+        };
+
+        // Markdown 渲染为安全 HTML；marked 缺失时回退转义纯文本。
+        const renderMarkdown = (content) => {
+            const text = content || '';
+            if (window.marked && window.DOMPurify) {
+                return DOMPurify.sanitize(marked.parse(text));
+            }
+            return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        };
+
+        // 加载历史会话列表。
+        const loadSessions = async () => {
+            try {
+                const response = await fetch(`/api/chat/sessions?userId=${encodeURIComponent(currentUserId())}`);
+                if (response.ok) sessions.value = await response.json();
+            } catch (error) {
+                // 列表加载失败静默处理，不打扰主界面。
+            }
+        };
+
+        // 打开历史会话并恢复消息列表。
+        const openSession = async (sid) => {
+            saveUserId();
+            sessionId.value = sid;
+            chatStatus.value = '正在恢复历史会话...';
+            try {
+                const response = await fetch(`/api/chat/sessions/${sid}/messages?userId=${encodeURIComponent(currentUserId())}`);
+                if (!response.ok) throw new Error(await response.text());
+                const rows = await response.json();
+                messages.value = rows.map((row, index) => {
+                    const msg = { role: row.role === 'USER' ? 'user' : 'assistant', content: row.content };
+                    if (row.confidenceLevel) msg.meta = { level: row.confidenceLevel, reason: '' };
+                    if (row.sourcesJson) {
+                        try { msg.sources = JSON.parse(row.sourcesJson); } catch (error) { msg.sources = []; }
+                    }
+                    if (msg.role === 'assistant') {
+                        msg.persisted = true;
+                        // 回填上一条用户提问，保证历史会话里也能提交带问题的反馈。
+                        for (let i = index - 1; i >= 0; i--) {
+                            if (rows[i].role === 'USER') {
+                                msg.question = rows[i].content;
+                                break;
+                            }
+                        }
+                    }
+                    return msg;
+                });
+                if (messages.value.length === 0) {
+                    messages.value = [{ role: 'assistant', content: '该历史会话没有可恢复的消息。' }];
+                }
+                chatStatus.value = '';
+                scrollBottom();
+            } catch (error) {
+                messages.value = [{ role: 'assistant', content: '加载历史会话失败：' + error.message }];
+                chatStatus.value = '';
+            }
+        };
+
+        // 提交消息反馈，成功后本地标记避免重复提交。
+        const submitFeedback = async (msg, rating) => {
+            if (msg.feedbackSent) return;
+            saveUserId();
+            try {
+                const response = await fetch('/api/feedback', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        userId: currentUserId(),
+                        sessionId: sessionId.value,
+                        question: msg.question || '',
+                        rating: rating
+                    })
+                });
+                if (!response.ok) throw new Error(await response.text());
+                msg.feedback = rating;
+                msg.feedbackSent = true;
+            } catch (error) {
+                chatStatus.value = '反馈失败：' + error.message;
+            }
+        };
+
+        // 发送用户问题并读取流式回答。
+        const send = async () => {
+            if (!input.value.trim() || loading.value) return;
+            saveUserId();
+            const userText = input.value.trim();
+            messages.value.push({ role: 'user', content: userText });
+            messages.value.push({ role: 'assistant', content: '', meta: null, sources: [], question: userText });
+            // 取响应式代理引用，保证流式写入能触发界面更新。
+            const assistant = messages.value[messages.value.length - 1];
+            input.value = '';
+            loading.value = true;
+            chatStatus.value = '正在检索知识库并生成回答...';
+            controller = new AbortController();
+            scrollBottom();
+
+            try {
+                const response = await fetch('/api/chat/stream', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ userId: currentUserId(), sessionId: sessionId.value, message: userText }),
+                    signal: controller.signal
+                });
+                if (!response.ok) throw new Error(await response.text());
+
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder('utf-8');
+                let pending = '';
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+                    pending += decoder.decode(value, { stream: true })
+                        .replace(/^data:/gm, '')
+                        .replace(/\n\n/g, '');
+                    // 依次消费前置哨兵帧（@meta@ 置信度、@sources@ 引用来源），剩余才是正文。
+                    let rest = consumeSentinel(pending, assistant);
+                    while (rest !== undefined && rest !== null) {
+                        pending = rest;
+                        rest = consumeSentinel(pending, assistant);
+                    }
+                    if (rest === null) continue;
+                    if (pending) {
+                        assistant.content += pending;
+                        pending = '';
+                        scrollBottom();
+                    }
+                }
+                if (pending) assistant.content += pending;
+                assistant.persisted = true;
+                chatStatus.value = '';
+                loadSessions();
+            } catch (error) {
+                if (error.name !== 'AbortError') {
+                    assistant.content = '请求失败：' + error.message;
+                }
+                chatStatus.value = '';
+            } finally {
+                loading.value = false;
+                controller = null;
+            }
+        };
+
+        // 中止当前流式回答。
+        const stop = () => {
+            if (controller) controller.abort();
+        };
+
+        // 上传文档；后端异步入库，前端轮询列表直到状态不再是 PROCESSING。
+        let ingestTimer = null;
+        const uploadDocument = async () => {
+            const file = fileInput.value?.files?.[0];
+            if (!file) {
+                uploadStatus.value = '请选择文档';
+                return;
+            }
+
+            const formData = new FormData();
+            formData.append('file', file);
+            uploadStatus.value = '正在上传...';
+            uploading.value = true;
+
+            try {
+                const response = await fetch('/api/documents', { method: 'POST', body: formData });
+                if (!response.ok) throw new Error(await response.text());
+                const result = await response.json();
+                uploadStatus.value = `已接收：${result.fileName}，后台解析入库中...`;
+                fileInput.value.value = '';
+                selectedFileName.value = '';
+                await loadDocuments();
+                startIngestPolling();
+            } catch (error) {
+                uploadStatus.value = '上传失败：' + error.message;
+            } finally {
+                uploading.value = false;
+            }
+        };
+
+        // 轮询文档列表，等待异步入库结束并反馈最终状态。
+        const startIngestPolling = () => {
+            if (ingestTimer) clearInterval(ingestTimer);
+            ingestTimer = setInterval(async () => {
+                await loadDocuments();
+                const stillProcessing = documents.value.some((doc) => doc.status === 'PROCESSING');
+                if (stillProcessing) {
+                    uploadStatus.value = '后台解析入库中...';
+                    return;
+                }
+                clearInterval(ingestTimer);
+                ingestTimer = null;
+                const failed = documents.value.find((doc) => doc.status === 'FAILED');
+                uploadStatus.value = failed ? `入库失败：${failed.errorMessage}` : '入库完成';
+            }, 2000);
+        };
+
+        // 从后端加载文档列表。
+        const loadDocuments = async () => {
+            const response = await fetch('/api/documents');
+            if (response.ok) documents.value = await response.json();
+        };
+
+        // 删除文档并刷新列表。
+        const deleteDocument = async (id) => {
+            await fetch(`/api/documents/${id}`, { method: 'DELETE' });
+            await loadDocuments();
+        };
+
+        // 主动保存一条长期记忆。
+        const addMemory = async () => {
+            saveUserId();
+            memoryStatus.value = '正在保存长期记忆...';
+            try {
+                const response = await fetch('/api/memories', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        userId: currentUserId(),
+                        title: memoryTitle.value,
+                        content: memoryContent.value,
+                        tags: memoryTags.value
+                    })
+                });
+                if (!response.ok) throw new Error(await response.text());
+                memoryTitle.value = '';
+                memoryContent.value = '';
+                memoryTags.value = '';
+                memoryStatus.value = '已保存';
+            } catch (error) {
+                memoryStatus.value = '保存失败：' + error.message;
+            }
+        };
+
+        // 置信度等级映射为徽章样式类。
+        const confidenceClass = (level) => {
+            if (level === 'HIGH') return 'ready';
+            if (level === 'LOW') return 'bad';
+            return 'warn';
+        };
+
+        // 置信度等级映射为中文文案。
+        const confidenceLabel = (level) => {
+            if (level === 'HIGH') return '高';
+            if (level === 'LOW') return '低';
+            return '中';
+        };
+
+        // 切换右侧工作区，进入缺口页时拉取分析数据。
+        const switchWorkspace = (name) => {
+            activeWorkspace.value = name;
+            if (name === 'gap') loadGapData();
+        };
+
+        // 拉取知识缺口摘要和聚类结果。
+        const loadGapData = async () => {
+            gapStatus.value = '正在分析知识缺口...';
+            try {
+                const summaryResponse = await fetch('/api/knowledge-gaps/summary');
+                if (!summaryResponse.ok) throw new Error(await summaryResponse.text());
+                gapSummary.value = await summaryResponse.json();
+                const clustersResponse = await fetch('/api/knowledge-gaps/clusters');
+                if (!clustersResponse.ok) throw new Error(await clustersResponse.text());
+                gapClusters.value = await clustersResponse.json();
+                gapStatus.value = '';
+            } catch (error) {
+                gapStatus.value = '加载失败：' + error.message;
+            }
+        };
+
+        // 检索均分保留两位小数。
+        const formatScore = (score) => {
+            if (score == null) return '0.00';
+            return Number(score).toFixed(2);
+        };
+
+        // LocalDateTime 序列化值转可读时间。
+        const formatTime = (value) => {
+            if (!value) return '未知';
+            return String(value).replace('T', ' ').slice(0, 16);
+        };
+
+        // 页面加载后初始化用户、文档列表和历史会话。
+        onMounted(() => {
+            saveUserId();
+            loadDocuments();
+            loadSessions();
+        });
+
+        return {
+            userId, sessionId, messages, input, loading, uploading, chatStatus, uploadStatus, memoryStatus,
+            documents, memoryTitle, memoryContent, memoryTags, selectedFileName, totalChunks, fileInput, chatBox,
+            activeWorkspace, gapSummary, gapClusters, gapStatus, lowConfidenceRatioText, sessions,
+            saveUserId, newSession, send, stop, uploadDocument, loadDocuments, deleteDocument, addMemory,
+            onFileChange, formatSize, confidenceClass, confidenceLabel, switchWorkspace, loadGapData,
+            formatScore, formatTime, renderMarkdown, loadSessions, openSession, submitFeedback
+        };
+    }
+}).mount('#app');
+</script>
+</body>
+</html>
