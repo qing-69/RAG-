@@ -1,23 +1,23 @@
-﻿server:
+server:
   port: 8085
 
 langchain4j:
   open-ai:
     chat-model:
-      base-url: https://dashscope.aliyuncs.com/compatible-mode/v1
-      api-key: ${API_KEY:${API-KEY:}}
-      model-name: qwen-plus
+      base-url: https://api.deepseek.com
+      api-key: ${DEEPSEEK_API_KEY}
+      model-name: deepseek-chat
       log-requests: true
       log-responses: true
     streaming-chat-model:
-      base-url: https://dashscope.aliyuncs.com/compatible-mode/v1
-      api-key: ${API_KEY:${API-KEY:}}
-      model-name: qwen-plus
+      base-url: https://api.deepseek.com
+      api-key: ${DEEPSEEK_API_KEY}
+      model-name: deepseek-chat
       log-requests: true
       log-responses: true
     embedding-model:
       base-url: https://dashscope.aliyuncs.com/compatible-mode/v1
-      api-key: ${API_KEY:${API-KEY:}}
+      api-key: ${BAILIAN_API_KEY}
       model-name: text-embedding-v3
       log-requests: false
       log-responses: false
