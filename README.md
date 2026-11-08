@@ -24,9 +24,9 @@
 ## 技术栈
 
 - 后端框架：Spring Boot 3.5
-- 大模型开发框架：LangChain4j
-- 大模型：Qwen-Plus
-- 向量模型：text-embedding-v3
+- 大模型开发框架：LangChain4j（OpenAI 兼容模式接入两家服务商）
+- 对话大模型：DeepSeek `deepseek-chat`（`DEEPSEEK_API_KEY`）
+- 向量模型：阿里百炼 Qwen `text-embedding-v3`（`BAILIAN_API_KEY`）
 - 向量数据库：Pinecone
 - 文档解析：Apache Tika
 - 关键词检索：内存 BM25
@@ -58,7 +58,7 @@
 5. 使用向量检索和 BM25 检索召回知识库片段。
 6. 对候选结果进行融合、去重和重排序。
 7. 构建 Prompt，融合原问题、重写结果、短期记忆、长期记忆和 RAG 片段（知识片段带 `[n]` 编号并要求标注引用）。
-8. 调用 Qwen-Plus 生成流式回答。
+8. 调用 DeepSeek `deepseek-chat` 生成流式回答。
 9. 将本轮问答写入 Redis，并在超过阈值时触发摘要压缩。
 10. 将本轮问答与来源列表落 MySQL（`chat_session` / `chat_message`），供历史会话恢复。
 
@@ -84,7 +84,8 @@ src/main/java/com/xiaoyan/aiassistant
 - MySQL 8+
 - Redis 6+
 - Pinecone 账号和 index（可选，本地默认使用内存向量库）
-- 阿里百炼 DashScope API Key
+- DeepSeek API Key（对话模型，必需）
+- 阿里百炼 DashScope API Key（向量模型，必需）
 
 ## 快速开始
 
@@ -115,7 +116,11 @@ src/main/resources/schema-user-memory-migration.sql
 可以参考 `.env.example`：
 
 ```bash
-API_KEY=你的DashScopeApiKey
+# 对话模型（DeepSeek）：https://platform.deepseek.com 创建
+DEEPSEEK_API_KEY=你的DeepSeekApiKey
+
+# 向量模型（阿里百炼 DashScope）：https://bailian.console.aliyun.com 创建
+BAILIAN_API_KEY=你的百炼ApiKey
 
 MYSQL_URL=jdbc:mysql://localhost:3307/team_knowledge?serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true
 MYSQL_USERNAME=root
@@ -128,6 +133,13 @@ PINECONE_ENABLED=false
 PINECONE_API_KEY=
 PINECONE_INDEX=team-knowledge
 ```
+
+两个 Key 分别对应两条互不相干的调用链，缺任何一个都跑不起来：
+
+| Key | 服务商 / 模型 | 负责 | 缺失后果 |
+| --- | --- | --- | --- |
+| `DEEPSEEK_API_KEY` | DeepSeek / `deepseek-chat` | 生成回答、Query 重写、会话摘要压缩（只出文字） | 启动即鉴权失败，问答 401 |
+| `BAILIAN_API_KEY` | 阿里百炼 / `text-embedding-v3` | 文档入库向量化、检索 Query 向量化、语义分块与去重（只出向量） | 上传必 `FAILED`，检索无候选，RAG 全链路不可用 |
 
 本地开发时，`PINECONE_ENABLED=false` 会使用内存向量库，便于启动和测试。生产或演示环境需要真实向量检索时，再开启 Pinecone。
 
@@ -305,6 +317,32 @@ GET /api/feedback?days=30
 ## 关键配置
 
 主要配置位于 `src/main/resources/application.yml`。
+
+### 模型接入
+
+两家服务商都通过 LangChain4j 的 OpenAI 兼容协议接入，只是 `base-url` 不同：
+
+```yaml
+langchain4j:
+  open-ai:
+    chat-model:                           # 非流式：Query 重写、会话摘要
+      base-url: https://api.deepseek.com
+      api-key: ${DEEPSEEK_API_KEY}
+      model-name: deepseek-chat
+    streaming-chat-model:                 # 流式：在线问答正文
+      base-url: https://api.deepseek.com
+      api-key: ${DEEPSEEK_API_KEY}
+      model-name: deepseek-chat
+    embedding-model:                      # 向量化：入库、检索、去重
+      base-url: https://dashscope.aliyuncs.com/compatible-mode/v1
+      api-key: ${BAILIAN_API_KEY}
+      model-name: text-embedding-v3
+      max-segments-per-batch: 10          # DashScope 单批上限
+```
+
+对应调用点：`ChatService`（流式回答）、`QueryRewriteService` / `ShortTermMemoryService`（非流式）、`VectorStoreService` / `SemanticChunker` / `SemanticDeduplicationService`（embedding）。
+
+### 应用参数
 
 ```yaml
 app:
